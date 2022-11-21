@@ -1,5 +1,7 @@
 from math import sin, cos, asin, atan, atan2, hypot, pi, inf, nan, degrees
 from copy import copy
+from typing import Optional
+from dataclasses import dataclass
 
 from bokeh.plotting import show, figure
 from bokeh.models import ColumnDataSource, ColorBar
@@ -7,65 +9,70 @@ from bokeh.layouts import row
 from bokeh.transform import linear_cmap
 from bokeh.palettes import Viridis256
 
-CM_CONVERSION = {"mm": 0.1, "cm": 1, "m": 100, "in": 2.54, "ft": 30.48}
+CM_CONVERSION: dict['str', float] = {"mm": 0.1, "cm": 1, "m": 100, "in": 2.54, "ft": 30.48}
 
 
+@dataclass
 class Point:
-
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
+    x: float
+    y: float
 
     @classmethod
-    def from_polar_coord(cls, radius, phase):
+    def from_polar_coord(cls, radius: float, phase: float):
         x = radius * cos(phase)
         y = radius * sin(phase)
         return cls(x, y)
 
-    def __add__(self, other):
+    def __add__(self, other: "Point") -> "Point":
         """Vector addition"""
         return Point(self.x + other.x, self.y + other.y)
 
-    def __sub__(self, other):
+    def __sub__(self, other: "Point") -> "Point":
         """Vector subtraction"""
         return Point(self.x - other.x, self.y - other.y)
 
-    def __mul__(self, scalar):
+    def __mul__(self, scalar: float) -> "Point":
         """Multiplication by scalar"""
         return Point(self.x * scalar, self.y * scalar)
 
-    def __truediv__(self, scalar):
+    def __truediv__(self, scalar: float) -> "Point":
         """Division by scalar"""
         return Point(self.x / scalar, self.y / scalar)
 
-    def __matmul__(self, other):
+    def __matmul__(self, other: "Point") -> float:
         """Inner (scalar) product"""
         return (self.x * other.x) + (self.y * other.y)
 
-    def __abs__(self):
+    def __abs__(self) -> float:
         return hypot(self.x, self.y)
 
-    def __repr__(self):
-        return f"Point({self.x}, {self.y})"
-
-    def phase(self):
+    def phase(self) -> float:
         return atan2(self.y, self.x)
 
-    def to_polar_coord(self):
+    def to_polar_coord(self) -> tuple[float, float]:
         radius = abs(self)
         phase = self.phase()
         return radius, phase
 
-    def rotate(self, angle):
+    def rotate(self, angle: float) -> "Point":
         radius, phase = self.to_polar_coord()
         return Point.from_polar_coord(radius, phase + angle)
 
-    __str__ = __repr__
-
 
 class Monitor:
+    diagonal_length: float
+    radius: float
+    aspect_ratio: float
+    left_end: Optional[Point]
+    right_end: Optional[Point]
+    circle_center: Optional[Point]
 
-    def __init__(self, diagonal_length, aspect_ratio, radius=inf, diagonal_unit="in", radius_unit="mm"):
+    def __init__(self,
+                 diagonal_length: float,
+                 aspect_ratio: float,
+                 radius: float = inf,
+                 diagonal_unit: str = "in",
+                 radius_unit: str = "mm"):
 
         if diagonal_unit not in CM_CONVERSION or radius_unit not in CM_CONVERSION:
             raise ValueError(f"units must be one of: {', '.join(CM_CONVERSION.keys())}")
@@ -78,13 +85,13 @@ class Monitor:
         self.right_end = None
         self.circle_center = None
 
-    def arc_width(self):
+    def arc_width(self) -> float:
         """Calculates the arc width of the monitor and returns it in centimeters"""
         diagonal_angle = atan(1 / self.aspect_ratio)
         arc_width = cos(diagonal_angle) * self.diagonal_length
         return arc_width
 
-    def chord_width(self):
+    def chord_width(self) -> float:
         """Calculates the physical (chord) width of the monitor and returns it in centimeters"""
         arc_width = self.arc_width()
         if self.radius == inf:
@@ -94,17 +101,17 @@ class Monitor:
             chord_width = 2 * self.radius * sin(central_angle / 2)
         return chord_width
 
-    def height(self):
+    def height(self) -> float:
         """Calculates the height of a monitor in centimeters"""
         diagonal_angle = atan(1 / self.aspect_ratio)
         height = sin(diagonal_angle) * self.diagonal_length
         return height
 
-    def display_area(self):
+    def display_area(self) -> float:
         """Calculate the display area of a monitor in square centimeters"""
         return self.height() * self.arc_width()
 
-    def depth(self):
+    def depth(self) -> float:
         """Calculates the depth of a (possibly curved) screen"""
         if self.radius == inf:
             depth = 0
@@ -113,7 +120,7 @@ class Monitor:
             depth = self.radius * (1 - cos(central_angle / 2))
         return depth
 
-    def arc_angle(self, position):
+    def arc_angle(self, position) -> float:
         """Calculates the angle between the chord of the monitor and the tangent
         of the arc at a given position.
         """
@@ -126,10 +133,10 @@ class Monitor:
             arc_angle = (0.5 - position) * central_angle
         return arc_angle
 
-    def midpoint(self):
+    def midpoint(self) -> Point:
         return (self.left_end + self.right_end) / 2
 
-    def get_circle_center(self):
+    def get_circle_center(self) -> Point:
         if self.radius == inf:
             circle_center = Point(nan, nan)
         else:
@@ -140,7 +147,7 @@ class Monitor:
                                                                      midpoint_to_center_direction)
         return circle_center
 
-    def get_coordinate(self, position):
+    def get_coordinate(self, position) -> Point:
         """Get the coordinates of the monitor in a given position"""
         if position < 0 or position > 1:
             raise ValueError("position must be between 0 (left) and 1 (right)")
@@ -154,7 +161,7 @@ class Monitor:
             position_from_center = Point.from_polar_coord(self.radius, position_from_center_direction)
             return self.circle_center + position_from_center
 
-    def viewing_angle(self, position, angle_unit="degrees"):
+    def viewing_angle(self, position, angle_unit="degrees") -> tuple[Point, float]:
         """Get the coordinates and viewing angle between of a point of the monitor"""
         if angle_unit not in ["degrees", "radians"]:
             raise ValueError("angle unit must be either degrees or radians")
@@ -173,8 +180,10 @@ class Monitor:
 
 
 class Setup:
+    viewing_distance: float
+    monitors: list[Monitor]
 
-    def __init__(self, monitors, viewing_distance, mode="perpendicular", distance_unit="cm"):
+    def __init__(self, monitors: list[Monitor], viewing_distance: float, mode: str = "perpendicular", distance_unit: str = "cm"):
         if distance_unit not in CM_CONVERSION:
             raise ValueError(f"units must be one of: {', '.join(CM_CONVERSION.keys())}")
         if mode not in ["perpendicular", "smooth"]:
@@ -206,7 +215,7 @@ class Setup:
         if num_monitors % 2 == 0 and mode == "smooth":
             del self.monitors[num_monitors // 2]
 
-    def _add_monitor(self, monitor, side, mode, rotate=None):
+    def _add_monitor(self, monitor: Monitor, side: str, mode: str, rotate: bool = False) -> None:
         monitor = copy(monitor)
         width = monitor.chord_width()
 
@@ -250,7 +259,7 @@ class Setup:
 
         monitor.circle_center = monitor.get_circle_center()
 
-    def get_viewing_angles(self, point_per_monitor=100, abs_angle=True):
+    def get_viewing_angles(self, point_per_monitor: int = 100, abs_angle: bool = True):
         data = {"monitor": [], "x": [], "y": [], "viewing_angle": []}
         for monitor_num, monitor in enumerate(self.monitors):
             for i in range(point_per_monitor):
@@ -264,7 +273,7 @@ class Setup:
                 data["viewing_angle"].append(angle)
         return data
 
-    def get_line_segments(self, segment_per_monitor=99, abs_angle=True):
+    def get_line_segments(self, segment_per_monitor: int = 99, abs_angle: bool = True):
         data = self.get_viewing_angles(segment_per_monitor + 1, abs_angle)
         new_data = {"monitor": [], "x": [], "y": [], "viewing_angle": []}
         prev_monitor = data["monitor"][0]
@@ -285,7 +294,7 @@ class Setup:
         return new_data
 
 
-def compare_setups(setup_1, setup_2, line_segments=200):
+def compare_setups(setup_1: Setup, setup_2: Setup, line_segments: int = 200):
     data_1 = setup_1.get_line_segments(line_segments // len(setup_1.monitors))
     data_2 = setup_2.get_line_segments(line_segments // len(setup_2.monitors))
 
