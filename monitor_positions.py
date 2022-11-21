@@ -1,6 +1,4 @@
 from math import sin, cos, asin, atan, atan2, hypot, pi, inf, nan, degrees
-from copy import copy
-from typing import Optional
 from dataclasses import dataclass
 
 from bokeh.plotting import show, figure
@@ -10,6 +8,22 @@ from bokeh.transform import linear_cmap
 from bokeh.palettes import Viridis256
 
 CM_CONVERSION: dict['str', float] = {"mm": 0.1, "cm": 1, "m": 100, "in": 2.54, "ft": 30.48}
+
+
+@dataclass
+class PointAngleData:
+    monitor_num: list[int] = []
+    x: list[float] = []
+    y: list[float] = []
+    viewing_angle: list[float] = []
+
+
+@dataclass
+class LineAngleData:
+    monitor_num: list[int] = []
+    x: list[list[float]] = []
+    y: list[list[float]] = []
+    viewing_angle: list[float] = []
 
 
 @dataclass
@@ -63,9 +77,6 @@ class Monitor:
     diagonal_length: float
     radius: float
     aspect_ratio: float
-    left_end: Optional[Point]
-    right_end: Optional[Point]
-    circle_center: Optional[Point]
 
     def __init__(self,
                  diagonal_length: float,
@@ -133,6 +144,20 @@ class Monitor:
             arc_angle = (0.5 - position) * central_angle
         return arc_angle
 
+
+class PlacedMonitor(Monitor):
+    left_end: Point
+    right_end: Point
+    circle_center: Point
+
+    def __init__(self, monitor: Monitor, left_end: Point, right_end: Point):
+        self.diagonal_length = monitor.diagonal_length
+        self.radius = monitor.radius
+        self.aspect_ratio = monitor.aspect_ratio
+        self.left_end = left_end
+        self.right_end = right_end
+        self.circle_center = self.get_circle_center()
+
     def midpoint(self) -> Point:
         return (self.left_end + self.right_end) / 2
 
@@ -181,9 +206,13 @@ class Monitor:
 
 class Setup:
     viewing_distance: float
-    monitors: list[Monitor]
+    monitors: list[PlacedMonitor]
 
-    def __init__(self, monitors: list[Monitor], viewing_distance: float, mode: str = "perpendicular", distance_unit: str = "cm"):
+    def __init__(self,
+                 monitors: list[Monitor],
+                 viewing_distance: float,
+                 mode: str = "perpendicular",
+                 distance_unit: str = "cm"):
         if distance_unit not in CM_CONVERSION:
             raise ValueError(f"units must be one of: {', '.join(CM_CONVERSION.keys())}")
         if mode not in ["perpendicular", "smooth"]:
@@ -216,78 +245,78 @@ class Setup:
             del self.monitors[num_monitors // 2]
 
     def _add_monitor(self, monitor: Monitor, side: str, mode: str, rotate: bool = False) -> None:
-        monitor = copy(monitor)
         width = monitor.chord_width()
 
         if side == "middle":
             chord_distance = self.viewing_distance - monitor.depth()
-            monitor.left_end = Point(-width / 2, chord_distance)
-            monitor.right_end = Point(width / 2, chord_distance)
+            left_end = Point(-width / 2, chord_distance)
+            right_end = Point(width / 2, chord_distance)
             if rotate:
                 half_angle = atan((monitor.chord_width() / 2) / self.viewing_distance)
-                monitor.left_end = monitor.left_end.rotate(-half_angle)
-                monitor.right_end = monitor.right_end.rotate(-half_angle)
-            self.monitors = [monitor]
+                left_end = left_end.rotate(-half_angle)
+                right_end = right_end.rotate(-half_angle)
+            self.monitors = [PlacedMonitor(monitor, left_end, right_end)]
 
         elif side == "left":
             adjacent_monitor = self.monitors[0]
-            monitor.right_end = adjacent_monitor.left_end
+            right_end = adjacent_monitor.left_end
             if mode == "perpendicular":
-                end_dist, right_end_phase = monitor.right_end.to_polar_coord()
+                end_dist, right_end_phase = right_end.to_polar_coord()
                 half_angle = asin((monitor.chord_width() / 2) / end_dist)
-                monitor.left_end = Point.from_polar_coord(end_dist, right_end_phase + 2 * half_angle)
+                left_end = Point.from_polar_coord(end_dist, right_end_phase + 2 * half_angle)
             elif mode == "smooth":
                 adjacent_monitor_phase = adjacent_monitor.midpoint().phase()
                 curvature_diff = adjacent_monitor.arc_angle(0) - monitor.arc_angle(1)
                 monitor_phase = adjacent_monitor_phase + curvature_diff
-                monitor.left_end = monitor.right_end + Point.from_polar_coord(width, monitor_phase + pi / 2)
-            self.monitors.insert(0, monitor)
+                left_end = right_end + Point.from_polar_coord(width, monitor_phase + pi / 2)
+            else:
+                raise ValueError("mode must be either perpendicular or smooth")
+            self.monitors.insert(0, PlacedMonitor(monitor, left_end, right_end))
 
         elif side == "right":
             adjacent_monitor = self.monitors[-1]
-            monitor.left_end = adjacent_monitor.right_end
+            left_end = adjacent_monitor.right_end
             if mode == "perpendicular":
-                end_dist, left_end_phase = monitor.left_end.to_polar_coord()
+                end_dist, left_end_phase = left_end.to_polar_coord()
                 half_angle = asin((monitor.chord_width() / 2) / end_dist)
-                monitor.right_end = Point.from_polar_coord(end_dist, left_end_phase - 2 * half_angle)
+                right_end = Point.from_polar_coord(end_dist, left_end_phase - 2 * half_angle)
             elif mode == "smooth":
                 adjacent_monitor_phase = adjacent_monitor.midpoint().phase()
                 curvature_diff = adjacent_monitor.arc_angle(1) - monitor.arc_angle(0)
                 monitor_phase = adjacent_monitor_phase + curvature_diff
-                monitor.right_end = monitor.left_end + Point.from_polar_coord(width, monitor_phase - pi / 2)
-            self.monitors.append(monitor)
+                right_end = left_end + Point.from_polar_coord(width, monitor_phase - pi / 2)
+            else:
+                raise ValueError("mode must be either perpendicular or smooth")
+            self.monitors.append(PlacedMonitor(monitor, left_end, right_end))
 
-        monitor.circle_center = monitor.get_circle_center()
-
-    def get_viewing_angles(self, point_per_monitor: int = 100, abs_angle: bool = True):
-        data = {"monitor": [], "x": [], "y": [], "viewing_angle": []}
+    def get_viewing_angles(self, point_per_monitor: int = 100, abs_angle: bool = True) -> PointAngleData:
+        data = PointAngleData()
         for monitor_num, monitor in enumerate(self.monitors):
             for i in range(point_per_monitor):
                 position = i / (point_per_monitor - 1)
                 position, angle = monitor.viewing_angle(position)
                 if abs_angle:
                     angle = abs(angle)
-                data["monitor"].append(monitor_num)
-                data["x"].append(position.x)
-                data["y"].append(position.y)
-                data["viewing_angle"].append(angle)
+                data.monitor_num.append(monitor_num)
+                data.x.append(position.x)
+                data.y.append(position.y)
+                data.viewing_angle.append(angle)
         return data
 
-    def get_line_segments(self, segment_per_monitor: int = 99, abs_angle: bool = True):
+    def get_line_segments(self, segment_per_monitor: int = 99, abs_angle: bool = True) -> LineAngleData:
         data = self.get_viewing_angles(segment_per_monitor + 1, abs_angle)
-        new_data = {"monitor": [], "x": [], "y": [], "viewing_angle": []}
-        prev_monitor = data["monitor"][0]
-        prev_x = data["x"][0]
-        prev_y = data["y"][0]
-        prev_viewing_angle = data["viewing_angle"][0]
-        for monitor, x, y, viewing_angle in zip(data["monitor"][1:], data["x"][1:], data["y"][1:],
-                                                data["viewing_angle"][1:]):
-            if monitor == prev_monitor:
-                new_data["monitor"].append(monitor)
-                new_data["x"].append([prev_x, x])
-                new_data["y"].append([prev_y, y])
-                new_data["viewing_angle"].append((prev_viewing_angle + viewing_angle) / 2)
-            prev_monitor = monitor
+        new_data = LineAngleData()
+        prev_monitor_num = data.monitor_num[0]
+        prev_x = data.x[0]
+        prev_y = data.y[0]
+        prev_viewing_angle = data.viewing_angle[0]
+        for monitor, x, y, viewing_angle in zip(data.monitor_num[1:], data.x[1:], data.y[1:], data.viewing_angle[1:]):
+            if monitor == prev_monitor_num:
+                new_data.monitor_num.append(monitor)
+                new_data.x.append([prev_x, x])
+                new_data.y.append([prev_y, y])
+                new_data.viewing_angle.append((prev_viewing_angle + viewing_angle) / 2)
+            prev_monitor_num = monitor
             prev_x = x
             prev_y = y
             prev_viewing_angle = viewing_angle
@@ -298,18 +327,22 @@ def compare_setups(setup_1: Setup, setup_2: Setup, line_segments: int = 200):
     data_1 = setup_1.get_line_segments(line_segments // len(setup_1.monitors))
     data_2 = setup_2.get_line_segments(line_segments // len(setup_2.monitors))
 
-    min_angle = min(data_1["viewing_angle"] + data_2["viewing_angle"])
-    max_angle = max(data_1["viewing_angle"] + data_2["viewing_angle"])
+    min_angle = min(data_1.viewing_angle + data_2.viewing_angle)
+    max_angle = max(data_1.viewing_angle + data_2.viewing_angle)
 
     source_1 = ColumnDataSource(data_1)
     source_2 = ColumnDataSource(data_2)
 
     mapper = linear_cmap(field_name="viewing_angle", palette=Viridis256, low=min_angle, high=max_angle)
-    color_bar = ColorBar(color_mapper=mapper["transform"], label_standoff=12, border_line_color=None, location=(0, 0))
+    color_bar = ColorBar(color_mapper=mapper["transform"], label_standoff=12, border_line_color=None,  # type: ignore
+                         location=(0, 0))
 
-    fig_1 = figure(width=400, height=400, match_aspect=True, aspect_scale=1)
-    fig_1.toolbar.logo = None
-    fig_1.toolbar_location = None
+    fig_1 = figure(width=400,
+                   height=400,
+                   match_aspect=True,
+                   aspect_scale=1,
+                   toolbar_location=None,
+                   toolbar_options={'logo': None})
     fig_1.multi_line("x", "y", color=mapper, source=source_1, line_width=3)
     fig_1.circle(0, 0, size=10)
 
