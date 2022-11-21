@@ -28,6 +28,7 @@ class LineAngleData:
 
 @dataclass
 class Point:
+    """A class to represent a point in 2D space"""
     x: float
     y: float
 
@@ -58,22 +59,27 @@ class Point:
         return (self.x * other.x) + (self.y * other.y)
 
     def __abs__(self) -> float:
+        """Eucledian norm"""
         return hypot(self.x, self.y)
 
     def phase(self) -> float:
+        """Returns the phase of the point in radians"""
         return atan2(self.y, self.x)
 
     def to_polar_coord(self) -> tuple[float, float]:
+        """Returns the polar coordinates (radius and phase) of the point"""
         radius = abs(self)
         phase = self.phase()
         return radius, phase
 
     def rotate(self, angle: float) -> "Point":
+        """Rotates the point by the given angle in radians"""
         radius, phase = self.to_polar_coord()
         return Point.from_polar_coord(radius, phase + angle)
 
 
 class Monitor:
+    """Represents an unplaced monitor"""
     diagonal_length: float
     radius: float
     aspect_ratio: float
@@ -146,6 +152,7 @@ class Monitor:
 
 
 class PlacedMonitor(Monitor):
+    """Represents a monitor placed in 2D space"""
     left_end: Point
     right_end: Point
     circle_center: Point
@@ -159,9 +166,11 @@ class PlacedMonitor(Monitor):
         self.circle_center = self.get_circle_center()
 
     def midpoint(self) -> Point:
+        """Returns the midpoint of chord of the monitor"""
         return (self.left_end + self.right_end) / 2
 
     def get_circle_center(self) -> Point:
+        """Calculates the point from which each point of the monitor is perpendicular to the viewer"""
         if self.radius == inf:
             circle_center = Point(nan, nan)
         else:
@@ -172,8 +181,8 @@ class PlacedMonitor(Monitor):
                                                                      midpoint_to_center_direction)
         return circle_center
 
-    def get_coordinate(self, position) -> Point:
-        """Get the coordinates of the monitor in a given position"""
+    def get_coordinate(self, position: float) -> Point:
+        """Get the coordinates of a point of the monitor"""
         if position < 0 or position > 1:
             raise ValueError("position must be between 0 (left) and 1 (right)")
         if self.radius == inf:
@@ -186,25 +195,26 @@ class PlacedMonitor(Monitor):
             position_from_center = Point.from_polar_coord(self.radius, position_from_center_direction)
             return self.circle_center + position_from_center
 
-    def viewing_angle(self, position, angle_unit="degrees") -> tuple[Point, float]:
-        """Get the coordinates and viewing angle between of a point of the monitor"""
+    def viewing_angle(self, position: float, angle_unit="degrees") -> tuple[Point, float]:
+        """Get the coordinates and viewing angle of a point of the monitor"""
         if angle_unit not in ["degrees", "radians"]:
             raise ValueError("angle unit must be either degrees or radians")
-        position = self.get_coordinate(position)
+        point = self.get_coordinate(position)
         if self.radius == inf:
             chord_direction = (self.left_end - self.right_end).phase()
             screen_normal = (chord_direction - pi / 2) % (2 * pi)
         else:
-            screen_normal = (position - self.circle_center).phase()
-        view_phase = position.phase()
+            screen_normal = (point - self.circle_center).phase()
+        view_phase = point.phase()
         view_angle_radians = view_phase - screen_normal
         if angle_unit == "radians":
-            return position, view_angle_radians
+            return point, view_angle_radians
         else:
-            return position, degrees(view_angle_radians)
+            return point, degrees(view_angle_radians)
 
 
 class Setup:
+    """Represents a setup of monitors"""
     viewing_distance: float
     monitors: list[PlacedMonitor]
 
@@ -245,6 +255,7 @@ class Setup:
             del self.monitors[num_monitors // 2]
 
     def _add_monitor(self, monitor: Monitor, side: str, mode: str, rotate: bool = False) -> None:
+        """Adds a monitor to the setup. Should only be called by the constructor."""
         width = monitor.chord_width()
 
         if side == "middle":
@@ -290,6 +301,7 @@ class Setup:
             self.monitors.append(PlacedMonitor(monitor, left_end, right_end))
 
     def get_viewing_angles(self, point_per_monitor: int = 100, abs_angle: bool = True) -> PointAngleData:
+        """Get the viewing angles of all monitors at regular intervals"""
         data = PointAngleData()
         for monitor_num, monitor in enumerate(self.monitors):
             for i in range(point_per_monitor):
@@ -304,6 +316,7 @@ class Setup:
         return data
 
     def get_line_segments(self, segment_per_monitor: int = 99, abs_angle: bool = True) -> LineAngleData:
+        """Get the viewing angles of all monitors at regular intervals in a format suitable for plotting"""
         data = self.get_viewing_angles(segment_per_monitor + 1, abs_angle)
         new_data = LineAngleData()
         prev_monitor_num = data.monitor_num[0]
