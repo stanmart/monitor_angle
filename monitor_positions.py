@@ -1,29 +1,57 @@
 from math import sin, cos, asin, atan, atan2, hypot, pi, inf, nan, degrees
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
-from bokeh.plotting import show, figure
-from bokeh.models import ColumnDataSource, ColorBar
+from bokeh.plotting import figure, Figure, Row, show
+from bokeh.models import ColumnDataSource, ColorBar, LinearColorMapper
 from bokeh.layouts import row
-from bokeh.transform import linear_cmap
 from bokeh.palettes import Viridis256
+from bokeh.core.validation import silence
+from bokeh.core.validation.warnings import MISSING_RENDERERS
 
-CM_CONVERSION: dict['str', float] = {"mm": 0.1, "cm": 1, "m": 100, "in": 2.54, "ft": 30.48}
+CM_CONVERSION: dict[str, float] = {"mm": 0.1, "cm": 1, "m": 100, "in": 2.54, "ft": 30.48}
 
 
 @dataclass
 class PointAngleData:
-    monitor_num: list[int] = []
-    x: list[float] = []
-    y: list[float] = []
-    viewing_angle: list[float] = []
+    monitor_num: list[int] = field(default_factory=list)
+    x: list[float] = field(default_factory=list)
+    y: list[float] = field(default_factory=list)
+    viewing_angle: list[float] = field(default_factory=list)
 
 
 @dataclass
 class LineAngleData:
-    monitor_num: list[int] = []
-    x: list[list[float]] = []
-    y: list[list[float]] = []
-    viewing_angle: list[float] = []
+    monitor_num: list[int] = field(default_factory=list)
+    x: list[list[float]] = field(default_factory=list)
+    y: list[list[float]] = field(default_factory=list)
+    viewing_angle: list[float] = field(default_factory=list)
+
+    def plot(self,
+             colormap: Optional[LinearColorMapper],
+             show_colorbar: bool = False,
+             width: int = 400,
+             height: int = 400,
+             toolbar_location: Optional[str] = "below") -> Figure:
+        """Plot the viewing angle data."""
+
+        source = ColumnDataSource(vars(self))
+
+        if colormap is None:
+            min_angle = min(self.viewing_angle)
+            max_angle = max(self.viewing_angle)
+            colormap = LinearColorMapper(palette=Viridis256, low=min_angle, high=max_angle)
+
+        fig = figure(width=width, height=height, match_aspect=True, aspect_scale=1, toolbar_location=toolbar_location)
+
+        fig.multi_line("x", "y", color={"field": "viewing_angle", "transform": colormap}, source=source, line_width=3)
+        fig.circle(0, 0, size=10)
+
+        if show_colorbar:
+            colorbar = ColorBar(color_mapper=colormap, label_standoff=12, border_line_color=None, location=(0, 0))
+            fig.add_layout(colorbar, "right")
+
+        return fig
 
 
 @dataclass
@@ -59,7 +87,7 @@ class Point:
         return (self.x * other.x) + (self.y * other.y)
 
     def __abs__(self) -> float:
-        """Eucledian norm"""
+        """Euclidean norm"""
         return hypot(self.x, self.y)
 
     def phase(self) -> float:
@@ -300,6 +328,21 @@ class Setup:
                 raise ValueError("mode must be either perpendicular or smooth")
             self.monitors.append(PlacedMonitor(monitor, left_end, right_end))
 
+    def screen_width(self, units: str = "cm") -> float:
+        """Get the total width of the screen area"""
+        width = sum(monitor.arc_width() for monitor in self.monitors)
+        return width / CM_CONVERSION[units]
+
+    def max_height(self, units: str = "cm") -> float:
+        """Get the maximum height of the setup"""
+        height = max(monitor.height() for monitor in self.monitors)
+        return height / CM_CONVERSION[units]
+
+    def display_area(self, units: str = "cm") -> float:
+        """Get the total area of the screen area"""
+        area = sum(monitor.display_area() for monitor in self.monitors)
+        return area / CM_CONVERSION[units]**2
+
     def get_viewing_angles(self, point_per_monitor: int = 100, abs_angle: bool = True) -> PointAngleData:
         """Get the viewing angles of all monitors at regular intervals"""
         data = PointAngleData()
@@ -335,57 +378,55 @@ class Setup:
             prev_viewing_angle = viewing_angle
         return new_data
 
+    def plot(self,
+             show_colorbar: bool = False,
+             segment_per_monitor: int = 99,
+             width: int = 400,
+             height: int = 400) -> Figure:
+        """Plot the setup and its viewing angles"""
 
-def compare_setups(setup_1: Setup, setup_2: Setup, line_segments: int = 200):
-    data_1 = setup_1.get_line_segments(line_segments // len(setup_1.monitors))
-    data_2 = setup_2.get_line_segments(line_segments // len(setup_2.monitors))
+        data = self.get_line_segments(segment_per_monitor)
 
-    min_angle = min(data_1.viewing_angle + data_2.viewing_angle)
-    max_angle = max(data_1.viewing_angle + data_2.viewing_angle)
+        min_angle = min(data.viewing_angle)
+        max_angle = max(data.viewing_angle)
+        colormap = LinearColorMapper(palette=Viridis256, low=min_angle, high=max_angle)
 
-    source_1 = ColumnDataSource(data_1)
-    source_2 = ColumnDataSource(data_2)
+        fig = data.plot(colormap=colormap, show_colorbar=show_colorbar, width=width, height=height)
+        return fig
 
-    mapper = linear_cmap(field_name="viewing_angle", palette=Viridis256, low=min_angle, high=max_angle)
-    color_bar = ColorBar(color_mapper=mapper["transform"], label_standoff=12, border_line_color=None,  # type: ignore
-                         location=(0, 0))
 
-    fig_1 = figure(width=400,
-                   height=400,
-                   match_aspect=True,
-                   aspect_scale=1,
-                   toolbar_location=None,
-                   toolbar_options={'logo': None})
-    fig_1.multi_line("x", "y", color=mapper, source=source_1, line_width=3)
-    fig_1.circle(0, 0, size=10)
+def compare_setups(setups: list[Setup], line_segments: int = 200, width: int = 400, height: int = 400) -> Row:
+    """Plot the viewing angles of multiple setups side by side"""
 
-    fig_2 = figure(width=500,
-                   height=400,
-                   match_aspect=True,
-                   aspect_scale=1,
-                   x_range=fig_1.x_range,
-                   y_range=fig_1.y_range)
-    fig_2.multi_line("x", "y", color=mapper, source=source_2, line_width=3)
-    fig_2.circle(0, 0, size=10)
+    num_setups = len(setups)
+    data_list = [setup.get_line_segments(line_segments // num_setups) for setup in setups]
+    min_angle = min(min(data.viewing_angle) for data in data_list)
+    max_angle = max(max(data.viewing_angle) for data in data_list)
 
-    fig_2.add_layout(color_bar, "right")
+    colormap = LinearColorMapper(palette=Viridis256, low=min_angle, high=max_angle)
 
-    fig = row(fig_1, fig_2)
-    show(fig)
+    fig_list: list[Figure] = []
+    for i, data in enumerate(data_list):
+        fig = data.plot(colormap=colormap, show_colorbar=False, width=width, height=height)
+        if i > 0:
+            fig.x_range = fig_list[0].x_range
+            fig.y_range = fig_list[0].y_range
+        fig_list.append(fig)
 
-    total_arc_width_1 = sum(monitor.arc_width() for monitor in setup_1.monitors)
-    max_height_1 = max(monitor.height() for monitor in setup_1.monitors)
-    display_area_1 = sum(monitor.display_area() for monitor in setup_1.monitors)
+    colorbar = ColorBar(color_mapper=colormap, label_standoff=12, border_line_color=None, location=(0, 0))
+    colorbar_fig = figure(height=height,
+                          width=120,
+                          toolbar_location=None,
+                          min_border=0,
+                          outline_line_color=None,
+                          title='Viewing angle (degrees)',
+                          title_location='right')
+    colorbar_fig.title.align = 'center'  # type: ignore
 
-    total_arc_width_2 = sum(monitor.arc_width() for monitor in setup_2.monitors)
-    max_height_2 = max(monitor.height() for monitor in setup_2.monitors)
-    display_area_2 = sum(monitor.display_area() for monitor in setup_2.monitors)
+    colorbar_fig.add_layout(colorbar, 'right')
 
-    print(" " * 27, "|", "Setup 1".rjust(10), "Setup 2".rjust(10))
-    print("-" * 28 + "+" + "-" * 22)
-    print("Total screen width (cm)".ljust(27), "|", "{:>10.2f} {:>10.2f}".format(total_arc_width_1, total_arc_width_2))
-    print("Largest screen height (cm)".ljust(27), "|", "{:>10.2f} {:>10.2f}".format(max_height_1, max_height_2))
-    print("Total screen area (cm^2)".ljust(27), "|", "{:>10.2f} {:>10.2f}".format(display_area_1, display_area_2))
+    fig_row = row(*fig_list, colorbar_fig)
+    return fig_row
 
 
 if __name__ == "__main__":
@@ -396,4 +437,8 @@ if __name__ == "__main__":
 
     setup_2 = Setup(monitors=[Monitor(34, 21 / 9, radius=1500)], viewing_distance=60, distance_unit="cm")
 
-    compare_setups(setup_1, setup_2, line_segments=200)
+    fig_row = compare_setups([setup_1, setup_2], line_segments=200)
+
+    # temporary solution to show the plot
+    silence(MISSING_RENDERERS, True)
+    show(fig_row)
