@@ -136,7 +136,10 @@ def create_column(title: str = ""):
                 alignment=alignment,  # type: ignore
                 viewing_distance=widgets.viewing_distance.value),  # type: ignore
             monitor_data)
-        line.data_source.data = vars(setup.get_line_segments())  # type: ignore
+        line_data = setup.get_line_segments()
+        line.data_source.data = vars(line_data)  # type: ignore
+        colormap.low = min(line_data.viewing_angle)  # type: ignore
+        colormap.high = max(line_data.viewing_angle)  # type: ignore
 
     def onchange_monitor_id(attr, old, new) -> None:
         """Callback for when the monitor ID changes."""
