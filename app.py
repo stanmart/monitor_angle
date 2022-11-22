@@ -117,7 +117,7 @@ def create_setup(setup_data: SetupData, monitor_data: list[MonitorData]) -> Setu
     return setup
 
 
-def create_column(title: str = ""):
+def create_column(title: str = "") -> Column:
 
     def onchange_setting(attr, old, new) -> None:
         """Callback for when the monitor data changes."""
@@ -139,7 +139,7 @@ def create_column(title: str = ""):
         line_data = setup.get_line_segments()
         line.data_source.data = vars(line_data)  # type: ignore
         colormap.low = min(line_data.viewing_angle)  # type: ignore
-        colormap.high = max(line_data.viewing_angle)  # type: ignore
+        colormap.high = max(line_data.viewing_angle) + 0.1  # type: ignore
 
     def onchange_monitor_id(attr, old, new) -> None:
         """Callback for when the monitor ID changes."""
@@ -174,7 +174,7 @@ def create_column(title: str = ""):
         line_data = setup.get_line_segments()
         line.data_source.data = vars(line_data)  # type: ignore
         colormap.low = min(line_data.viewing_angle)  # type: ignore
-        colormap.high = max(line_data.viewing_angle)  # type: ignore
+        colormap.high = max(line_data.viewing_angle) + 0.1  # type: ignore
 
     fig, line, colormap, monitor_data = create_default_plot()
 
@@ -191,5 +191,6 @@ def create_column(title: str = ""):
 
 col_1 = create_column("Setup 1")
 col_2 = create_column("Setup 2")
+
 content = row(col_1, col_2)
 curdoc().add_root(content)
