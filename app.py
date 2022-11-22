@@ -21,6 +21,9 @@ def create_setup_ui() -> Column:
             id_radio.active = new - 1
     num_slider.on_change("value", update_id_radio)
 
+    perpendicular_radio = RadioButtonGroup(labels=["Perpendicular", "Smooth"], active=0)
+    perpendicular_row = row(Div(text="Monitor alignment: "), perpendicular_radio)
+
     aspect_h = NumericInput(value=16, low=1, high=100, width=60)
     aspect_v = NumericInput(value=9, low=1, high=100, width=60)
     aspect_box = row(Div(text="Aspect ratio:"), aspect_h, Div(text=":"), aspect_v)
@@ -38,7 +41,7 @@ def create_setup_ui() -> Column:
             radius_slider.disabled = True  # type: ignore
     curved_checkbox.on_change("active", enable_radius_slider)
 
-    setup_ui = column(monitor_row, size_row, curve_row)
+    setup_ui = column(perpendicular_row, monitor_row, size_row, curve_row)
     return setup_ui
 
 
