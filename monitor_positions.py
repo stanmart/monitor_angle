@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from bokeh.plotting import figure, Figure, Row, show
-from bokeh.models import ColumnDataSource, ColorBar, LinearColorMapper
+from bokeh.models import ColumnDataSource, ColorBar, LinearColorMapper, GlyphRenderer
 from bokeh.layouts import row
 from bokeh.palettes import Viridis256
 from bokeh.core.validation import silence
@@ -32,7 +32,7 @@ class LineAngleData:
              show_colorbar: bool = False,
              width: int = 400,
              height: int = 400,
-             toolbar_location: Optional[str] = "below") -> Figure:
+             toolbar_location: Optional[str] = "below") -> tuple[Figure, GlyphRenderer]:
         """Plot the viewing angle data."""
 
         source = ColumnDataSource(vars(self))
@@ -44,14 +44,21 @@ class LineAngleData:
 
         fig = figure(width=width, height=height, match_aspect=True, aspect_scale=1, toolbar_location=toolbar_location)
 
-        fig.multi_line("x", "y", color={"field": "viewing_angle", "transform": colormap}, source=source, line_width=3)
+        line = fig.multi_line("x",
+                              "y",
+                              color={
+                                  "field": "viewing_angle",
+                                  "transform": colormap
+                              },
+                              source=source,
+                              line_width=3)
         fig.circle(0, 0, size=10)
 
         if show_colorbar:
             colorbar = ColorBar(color_mapper=colormap, label_standoff=12, border_line_color=None, location=(0, 0))
             fig.add_layout(colorbar, "right")
 
-        return fig
+        return fig, line
 
 
 @dataclass
@@ -382,7 +389,7 @@ class Setup:
              show_colorbar: bool = False,
              segment_per_monitor: int = 99,
              width: int = 400,
-             height: int = 400) -> Figure:
+             height: int = 400) -> tuple[Figure, GlyphRenderer]:
         """Plot the setup and its viewing angles"""
 
         data = self.get_line_segments(segment_per_monitor)
@@ -391,8 +398,8 @@ class Setup:
         max_angle = max(data.viewing_angle)
         colormap = LinearColorMapper(palette=Viridis256, low=min_angle, high=max_angle)
 
-        fig = data.plot(colormap=colormap, show_colorbar=show_colorbar, width=width, height=height)
-        return fig
+        fig, line = data.plot(colormap=colormap, show_colorbar=show_colorbar, width=width, height=height)
+        return fig, line
 
 
 def compare_setups(setups: list[Setup], line_segments: int = 200, width: int = 400, height: int = 400) -> Row:
@@ -407,7 +414,7 @@ def compare_setups(setups: list[Setup], line_segments: int = 200, width: int = 4
 
     fig_list: list[Figure] = []
     for i, data in enumerate(data_list):
-        fig = data.plot(colormap=colormap, show_colorbar=False, width=width, height=height)
+        fig, _ = data.plot(colormap=colormap, show_colorbar=False, width=width, height=height)
         if i > 0:
             fig.x_range = fig_list[0].x_range
             fig.y_range = fig_list[0].y_range
