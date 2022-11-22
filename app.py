@@ -116,70 +116,74 @@ def create_setup(setup_data: SetupData, monitor_data: list[MonitorData]) -> Setu
     return setup
 
 
-def onchange_setting(attr, old, new) -> None:
-    """Callback for when the monitor data changes."""
+def create_column(title: str = ""):
 
-    changed_monitor = MonitorData(diagonal_length=widgets.monitor_size.value,
-                                  radius=widgets.radius.value if 0 in widgets.curved.active else inf,
-                                  aspect_h=widgets.aspect_h.value,
-                                  aspect_v=widgets.aspect_v.value)
-    monitor_data[widgets.monitor_id.active] = changed_monitor
-    alignment = "perpendicular" if widgets.alignment.active == 0 else "smooth"
+    def onchange_setting(attr, old, new) -> None:
+        """Callback for when the monitor data changes."""
 
-    setup = create_setup(
-        SetupData(
-            num_monitors=widgets.num_monitors.value,  # type: ignore
-            alignment=alignment,  # type: ignore
-            viewing_distance=widgets.viewing_distance.value),  # type: ignore
-        monitor_data)
-    line.data_source.data = vars(setup.get_line_segments())
+        changed_monitor = MonitorData(diagonal_length=widgets.monitor_size.value,
+                                    radius=widgets.radius.value if 0 in widgets.curved.active else inf,
+                                    aspect_h=widgets.aspect_h.value,
+                                    aspect_v=widgets.aspect_v.value)
+        monitor_data[widgets.monitor_id.active] = changed_monitor
+        alignment = "perpendicular" if widgets.alignment.active == 0 else "smooth"
 
-
-def onchange_monitor_id(attr, old, new) -> None:
-    """Callback for when the monitor ID changes."""
-    monitor = monitor_data[new]
-    widgets.monitor_size.value = monitor.diagonal_length
-    widgets.aspect_h.value = monitor.aspect_h
-    widgets.aspect_v.value = monitor.aspect_v
-    if monitor.radius == inf:
-        widgets.curved.active = []
-        widgets.radius.disabled = True
-    else:
-        widgets.curved.active = [0]
-        widgets.radius.disabled = False
-        widgets.radius.value = monitor.radius
+        setup = create_setup(
+            SetupData(
+                num_monitors=widgets.num_monitors.value,  # type: ignore
+                alignment=alignment,  # type: ignore
+                viewing_distance=widgets.viewing_distance.value),  # type: ignore
+            monitor_data)
+        line.data_source.data = vars(setup.get_line_segments())
 
 
-def onchange_monitor_num(attr, old, new) -> None:
-    """Callback for when the number of monitors changes."""
-    if new > old:
-        for _ in range(new - old):
-            monitor_data.append(MonitorData(diagonal_length=24, radius=inf, aspect_h=16, aspect_v=9))
-    else:
-        for _ in range(old - new):
-            monitor_data.pop()
-
-    alignment = "perpendicular" if widgets.alignment.active == 0 else "smooth"
-    setup = create_setup(
-        SetupData(
-            num_monitors=widgets.num_monitors.value,  # type: ignore
-            alignment=alignment,  # type: ignore
-            viewing_distance=widgets.viewing_distance.value),  # type: ignore
-        monitor_data)
-    line.data_source.data = vars(setup.get_line_segments())
+    def onchange_monitor_id(attr, old, new) -> None:
+        """Callback for when the monitor ID changes."""
+        monitor = monitor_data[new]
+        widgets.monitor_size.value = monitor.diagonal_length
+        widgets.aspect_h.value = monitor.aspect_h
+        widgets.aspect_v.value = monitor.aspect_v
+        if monitor.radius == inf:
+            widgets.curved.active = []
+            widgets.radius.disabled = True
+        else:
+            widgets.curved.active = [0]
+            widgets.radius.disabled = False
+            widgets.radius.value = monitor.radius
 
 
-fig, line, monitor_data = create_default_plot()
-line_source = line.data_source
+    def onchange_monitor_num(attr, old, new) -> None:
+        """Callback for when the number of monitors changes."""
+        if new > old:
+            for _ in range(new - old):
+                monitor_data.append(MonitorData(diagonal_length=24, radius=inf, aspect_h=16, aspect_v=9))
+        else:
+            for _ in range(old - new):
+                monitor_data.pop()
 
-setup_ui, widgets = create_setup_ui()
-for widget in [widgets.viewing_distance, widgets.monitor_size, widgets.aspect_h, widgets.aspect_v, widgets.radius]:
-    widget.on_change("value", onchange_setting)
-for widget in [widgets.curved, widgets.alignment]:
-    widget.on_change("active", onchange_setting)
-widgets.monitor_id.on_change("active", onchange_monitor_id)
-widgets.num_monitors.on_change("value", onchange_monitor_num)
+        alignment = "perpendicular" if widgets.alignment.active == 0 else "smooth"
+        setup = create_setup(
+            SetupData(
+                num_monitors=widgets.num_monitors.value,  # type: ignore
+                alignment=alignment,  # type: ignore
+                viewing_distance=widgets.viewing_distance.value),  # type: ignore
+            monitor_data)
+        line.data_source.data = vars(setup.get_line_segments())
 
-content = column(setup_ui, fig)
+    fig, line, monitor_data = create_default_plot()
 
+    setup_ui, widgets = create_setup_ui()
+    for widget in [widgets.viewing_distance, widgets.monitor_size, widgets.aspect_h, widgets.aspect_v, widgets.radius]:
+        widget.on_change("value", onchange_setting)
+    for widget in [widgets.curved, widgets.alignment]:
+        widget.on_change("active", onchange_setting)
+    widgets.monitor_id.on_change("active", onchange_monitor_id)
+    widgets.num_monitors.on_change("value", onchange_monitor_num)
+
+    return column(Div(text=f"<h2>{title}</h2>"), setup_ui, fig)
+
+
+col_1 = create_column("Setup 1")
+col_2 = create_column("Setup 2")
+content = row(col_1, col_2)
 curdoc().add_root(content)
