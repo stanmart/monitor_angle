@@ -1,9 +1,9 @@
 from math import inf
 from dataclasses import dataclass
 
-from bokeh.plotting import Figure
+from bokeh.plotting import figure
 from bokeh.layouts import column, row
-from bokeh.models import NumericInput, Div, CheckboxButtonGroup, RadioButtonGroup, Column, Slider, GlyphRenderer
+from bokeh.models import NumericInput, Div, CheckboxButtonGroup, RadioButtonGroup, Column, Slider, GlyphRenderer, LinearColorMapper
 from bokeh.io import curdoc
 
 from monitor_positions import Monitor, Setup
@@ -93,16 +93,16 @@ def create_setup_ui() -> tuple[Column, Widgets]:
     return setup_ui, widgets
 
 
-def create_default_plot() -> tuple[Figure, GlyphRenderer, list[MonitorData]]:
+def create_default_plot() -> tuple[figure, GlyphRenderer, LinearColorMapper, list[MonitorData]]:
     """Create the plot for displaying the monitor positions."""
     default_monitor = MonitorData(diagonal_length=24, radius=inf, aspect_h=16, aspect_v=9)
     default_setup = SetupData(num_monitors=2, alignment="perpendicular", viewing_distance=60)
     default_monitor_data = [default_monitor] * default_setup.num_monitors
 
     setup = create_setup(default_setup, default_monitor_data)
-    fig, line = setup.plot(width=600, show_colorbar=True)
+    fig, line, colormap = setup.plot(width=600, show_colorbar=True)
 
-    return (fig, line, default_monitor_data)
+    return (fig, line, colormap, default_monitor_data)
 
 
 def create_setup(setup_data: SetupData, monitor_data: list[MonitorData]) -> Setup:
@@ -122,9 +122,9 @@ def create_column(title: str = ""):
         """Callback for when the monitor data changes."""
 
         changed_monitor = MonitorData(diagonal_length=widgets.monitor_size.value,
-                                    radius=widgets.radius.value if 0 in widgets.curved.active else inf,
-                                    aspect_h=widgets.aspect_h.value,
-                                    aspect_v=widgets.aspect_v.value)
+                                      radius=widgets.radius.value if 0 in widgets.curved.active else inf,
+                                      aspect_h=widgets.aspect_h.value,
+                                      aspect_v=widgets.aspect_v.value)
         monitor_data[widgets.monitor_id.active] = changed_monitor
         alignment = "perpendicular" if widgets.alignment.active == 0 else "smooth"
 
@@ -135,7 +135,6 @@ def create_column(title: str = ""):
                 viewing_distance=widgets.viewing_distance.value),  # type: ignore
             monitor_data)
         line.data_source.data = vars(setup.get_line_segments())
-
 
     def onchange_monitor_id(attr, old, new) -> None:
         """Callback for when the monitor ID changes."""
@@ -150,7 +149,6 @@ def create_column(title: str = ""):
             widgets.curved.active = [0]
             widgets.radius.disabled = False
             widgets.radius.value = monitor.radius
-
 
     def onchange_monitor_num(attr, old, new) -> None:
         """Callback for when the number of monitors changes."""
@@ -168,9 +166,12 @@ def create_column(title: str = ""):
                 alignment=alignment,  # type: ignore
                 viewing_distance=widgets.viewing_distance.value),  # type: ignore
             monitor_data)
-        line.data_source.data = vars(setup.get_line_segments())
+        line_data = setup.get_line_segments()
+        line.data_source.data = vars(line_data)
+        colormap.low = min(line_data.viewing_angle)
+        colormap.high = max(line_data.viewing_angle)
 
-    fig, line, monitor_data = create_default_plot()
+    fig, line, colormap, monitor_data = create_default_plot()
 
     setup_ui, widgets = create_setup_ui()
     for widget in [widgets.viewing_distance, widgets.monitor_size, widgets.aspect_h, widgets.aspect_v, widgets.radius]:

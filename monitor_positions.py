@@ -2,11 +2,11 @@ from math import sin, cos, asin, atan, atan2, hypot, pi, inf, nan, degrees
 from dataclasses import dataclass, field
 from typing import Optional
 
-from bokeh.plotting import figure, Figure, Row, show
-from bokeh.models import ColumnDataSource, ColorBar, LinearColorMapper, GlyphRenderer
+from bokeh.plotting import figure, show
+from bokeh.models import ColumnDataSource, ColorBar, LinearColorMapper, GlyphRenderer, Row
 from bokeh.layouts import row
 from bokeh.palettes import Viridis256
-from bokeh.core.validation import silence
+from bokeh.core.validation.check import silence
 from bokeh.core.validation.warnings import MISSING_RENDERERS
 
 CM_CONVERSION: dict[str, float] = {"mm": 0.1, "cm": 1, "m": 100, "in": 2.54, "ft": 30.48}
@@ -32,7 +32,7 @@ class LineAngleData:
              show_colorbar: bool = False,
              width: int = 400,
              height: int = 400,
-             toolbar_location: Optional[str] = "below") -> tuple[Figure, GlyphRenderer]:
+             toolbar_location: Optional[str] = "below") -> tuple[figure, GlyphRenderer]:
         """Plot the viewing angle data."""
 
         source = ColumnDataSource(vars(self))
@@ -389,7 +389,7 @@ class Setup:
              show_colorbar: bool = False,
              segment_per_monitor: int = 99,
              width: int = 400,
-             height: int = 400) -> tuple[Figure, GlyphRenderer]:
+             height: int = 400) -> tuple[figure, GlyphRenderer, LinearColorMapper]:
         """Plot the setup and its viewing angles"""
 
         data = self.get_line_segments(segment_per_monitor)
@@ -399,7 +399,7 @@ class Setup:
         colormap = LinearColorMapper(palette=Viridis256, low=min_angle, high=max_angle)
 
         fig, line = data.plot(colormap=colormap, show_colorbar=show_colorbar, width=width, height=height)
-        return fig, line
+        return fig, line, colormap
 
 
 def compare_setups(setups: list[Setup], line_segments: int = 200, width: int = 400, height: int = 400) -> Row:
@@ -412,9 +412,9 @@ def compare_setups(setups: list[Setup], line_segments: int = 200, width: int = 4
 
     colormap = LinearColorMapper(palette=Viridis256, low=min_angle, high=max_angle)
 
-    fig_list: list[Figure] = []
+    fig_list: list[figure] = []
     for i, data in enumerate(data_list):
-        fig, _ = data.plot(colormap=colormap, show_colorbar=False, width=width, height=height)
+        fig, *_ = data.plot(colormap=colormap, show_colorbar=False, width=width, height=height)
         if i > 0:
             fig.x_range = fig_list[0].x_range
             fig.y_range = fig_list[0].y_range
